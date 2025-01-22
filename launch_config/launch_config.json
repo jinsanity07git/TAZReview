@@ -1,0 +1,22 @@
+{
+    "name": "TAZ reviewer",
+    "category": "Data Report",
+    "group": "Utility Tools",
+    "description": "description.md",
+    "icon": "icon-taz.png",
+    "documentation": "documentation.md",
+    "version": "0.0.1",
+    "dependencies": { 
+        "tdm23_vr": ">=0.1.3",
+        "tdm23_sr": ">=1.0.0"
+    },
+    "launch_links": [
+        {
+            "link_type": "app",
+            "app_endpoint": "/tazreview",
+            "app_launch_file": "toolrun.py",
+            "link_color": "yellow",
+            "link_text": "Launch"
+        }
+    ]
+}
