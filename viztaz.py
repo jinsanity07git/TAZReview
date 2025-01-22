@@ -74,7 +74,8 @@ class Review:
         plt.show()
 
         # Calculate the center latitude and longitude of the oldtarget area
-        oldtarget_centroid = oldtarget.to_crs(epsg=4326).geometry.centroid
+        oldtarget_projected = oldtarget.to_crs(epsg=3857)
+        oldtarget_centroid = oldtarget_projected.geometry.centroid.to_crs(epsg=4326)
         center_lat = oldtarget_centroid.y.mean()
         center_lon = oldtarget_centroid.x.mean()
         gmapweb = f"https://www.google.com/maps/@{center_lat},{center_lon},15z/data=!3m1!1e3"
