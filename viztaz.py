@@ -44,7 +44,9 @@ class Review:
                         'line_style': (0, (2, 10))
                         }
                     },
-                    legend = False):
+                    legend = False,
+                    ax=None,
+                    ):
         """
 
         """
@@ -59,7 +61,10 @@ class Review:
         ogdf_filtered = self.ggdf[self.ggdf.intersects(oldtarget_buffer.unary_union)]
 
         # Create a figure and axes
-        fig, ax = plt.subplots(figsize=(16,9), facecolor='none')
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(16,9))
+        else:
+            fig = ax.get_figure()
         # First, ensure the GeoDataFrames are in Web Mercator projection (EPSG:3857)
         oldtarget = oldtarget.to_crs(epsg=3857)
         bldf_filtered = bldf_filtered.to_crs(epsg=3857)
@@ -117,6 +122,11 @@ class Review:
         ]
         # Remove x-axis and y-axis
         ax.axis('off')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+
         if legend:
             
             ax.legend(handles=proxy_artists, loc='center left', bbox_to_anchor=(1, 0.5))
@@ -136,7 +146,7 @@ class Review:
             display(HTML(htmlstr))
             # print(gmapweb)
             # return center_lat, center_lon
-
+        # return fig
 
 if __name__ == "__main__":
 
