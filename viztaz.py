@@ -2,7 +2,8 @@ import geopandas
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import contextily as ctx
-
+from IPython.core.display import  HTML
+from IPython.display import display
 class Review:
     def __init__(self, oldtaz):
         self.oldtaz = oldtaz
@@ -76,9 +77,11 @@ class Review:
         oldtarget_centroid = oldtarget.to_crs(epsg=4326).geometry.centroid
         center_lat = oldtarget_centroid.y.mean()
         center_lon = oldtarget_centroid.x.mean()
-
         gmapweb = f"https://www.google.com/maps/@{center_lat},{center_lon},15z/data=!3m1!1e3"
-        print(gmapweb)
+        htmlstr = f"""<a href="{gmapweb}" 
+                            target="_blank"'>jump to google map</a>"""
+        display(HTML(htmlstr))
+        # print(gmapweb)
         # return center_lat, center_lon
 
 
