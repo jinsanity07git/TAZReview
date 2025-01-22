@@ -1,2 +1,4 @@
 shapefiles/
 TAZ delineation notes.xlsx
+outputs/*.html
+__pycache__/
