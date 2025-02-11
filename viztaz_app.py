@@ -5,8 +5,6 @@ viztaz_app.py
 bokeh serve --show viztaz_app.py
 ---------------------------------
 
-Implements your layout requests without doc.stylesheets, to avoid errors on Bokeh 3.x.
-
 Features:
  - Top row: left = Enter Old TAZ ID, center = "Currently Searching TAZ: #/Not Found", 
    right = "Selected Map Background" + dropdown
@@ -17,8 +15,14 @@ Features:
  - Old TAZ = blue in top-left & combined
  - Summation row always at table bottom, bolded
  - TAZ ID in green if found, or red "[TAZ Not Found]" if invalid
+
+Modifications in this version:
+  1. Map titles are always visible (moved above the plot area).
+  2. New TAZes and blocks are clipped to the intersection with a 5-mile buffer around the centroid of the old TAZ.
+  3. Shapefiles are read from folders (one bundle per folder).
 """
 
+import os, glob
 import geopandas as gpd
 from shapely.geometry import Polygon, MultiPolygon
 import numpy as np
@@ -34,11 +38,22 @@ from bokeh.plotting import figure
 from bokeh.tile_providers import CARTODBPOSITRON, ESRI_IMAGERY  # DeprecationWarning but still works in 3.4.x
 
 # -----------------------------------------------------------------------------
-# 1. Load & Clean Shapefiles (EPSG:3857)
+# 1. Read Shapefiles from Respective Folders
 # -----------------------------------------------------------------------------
-url_old_taz = "./shapefiles/CTPS_TDM23_TAZ_2017g_v202303.shp"
-url_new_taz = "./shapefiles/taz_new_Jan14_1.shp"
-url_blocks  = "./shapefiles/blocks20a.shp"
+# Update these folder paths as needed.
+old_taz_folder = "./shapefiles/old_taz_shapefile"   # folder containing all old TAZ shapefile components
+new_taz_folder = "./shapefiles/new_taz_shapefile"   # folder containing all new TAZ shapefile components
+blocks_folder  = "./shapefiles/blocks_shapefile"     # folder containing all blocks shapefile components
+
+def find_shapefile_in_folder(folder):
+    shp_files = glob.glob(os.path.join(folder, "*.shp"))
+    if not shp_files:
+        raise FileNotFoundError(f"No shapefile found in folder: {folder}")
+    return shp_files[0]
+
+url_old_taz = find_shapefile_in_folder(old_taz_folder)
+url_new_taz = find_shapefile_in_folder(new_taz_folder)
+url_blocks  = find_shapefile_in_folder(blocks_folder)
 
 gdf_old_taz  = gpd.read_file(url_old_taz)
 gdf_new_taz  = gpd.read_file(url_new_taz)
@@ -89,8 +104,6 @@ if 'GEOID20' in gdf_blocks.columns:
 # -----------------------------------------------------------------------------
 # 2. Helper Functions
 # -----------------------------------------------------------------------------
-from bokeh.models import ColumnDataSource
-
 def split_multipolygons_to_cds(gdf, id_field, ensure_cols=None):
     if ensure_cols is None:
         ensure_cols = []
@@ -133,9 +146,22 @@ def filter_old_taz(old_id_int):
     subset_old = gdf_old_taz[gdf_old_taz['taz_id'] == old_id_int]
     if subset_old.empty:
         return (None, None, None)
-    region = subset_old.unary_union
-    new_sub = gdf_new_taz[gdf_new_taz.intersects(region)]
-    blocks_sub = gdf_blocks[gdf_blocks.intersects(region)]
+    # Compute the union of the old TAZ polygons and then the centroid.
+    old_union = subset_old.unary_union
+    centroid = old_union.centroid
+    buffer_radius = 1000  # in meters
+    buffer_geom = centroid.buffer(buffer_radius)
+    
+    # Filter new taz and blocks to those that intersect the 5-mile buffer.
+    new_sub = gdf_new_taz[gdf_new_taz.intersects(buffer_geom)].copy()
+    blocks_sub = gdf_blocks[gdf_blocks.intersects(buffer_geom)].copy()
+    
+    # Clip the geometries to the buffer so that only the intersecting portions are displayed.
+    if not new_sub.empty:
+        new_sub["geometry"] = new_sub.geometry.intersection(buffer_geom)
+    if not blocks_sub.empty:
+        blocks_sub["geometry"] = blocks_sub.geometry.intersection(buffer_geom)
+    
     return (subset_old, new_sub, blocks_sub)
 
 def add_sum_row(d, colnames):
@@ -147,8 +173,8 @@ def add_sum_row(d, colnames):
     sums = {c:0 for c in colnames}
     for c in colnames:
         for val in d[c]:
-            if isinstance(val, (int,float)):
-                sums[c]+=val
+            if isinstance(val, (int, float)):
+                sums[c] += val
     d['id'].append("Sum")
     for c in colnames:
         d[c].append(sums[c])
@@ -160,25 +186,26 @@ def add_sum_row(d, colnames):
 old_taz_source        = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 old_taz_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
-new_taz_source        = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[],PERSNS19=[],WORKRS19=[],EMP19=[]))
+new_taz_source        = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[]))
 new_taz_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
 combined_old_source    = ColumnDataSource(dict(xs=[], ys=[], id=[]))
-combined_new_source    = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[],PERSNS19=[],WORKRS19=[],EMP19=[]))
+combined_new_source    = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[]))
 combined_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
-blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[],PERSNS19=[],WORKRS19=[],EMP19=[]))
+blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[]))
 
 global_new_gdf    = None
 global_blocks_gdf = None
 
 # -----------------------------------------------------------------------------
-# 4. Figures
+# 4. Figures (with titles always shown above the plot)
 # -----------------------------------------------------------------------------
 TOOLS = "pan,wheel_zoom,box_zoom,reset"
 
 p_old = figure(
     title="1) Old TAZ (blue)",
+    title_location="above",
     match_aspect=True,
     tools=TOOLS, active_scroll='wheel_zoom',
     x_axis_type="mercator", y_axis_type="mercator",
@@ -186,6 +213,7 @@ p_old = figure(
 )
 p_new = figure(
     title="2) New TAZ (red; blocks not selectable)",
+    title_location="above",
     match_aspect=True,
     tools=TOOLS + ",tap", active_scroll='wheel_zoom',
     x_axis_type="mercator", y_axis_type="mercator",
@@ -193,6 +221,7 @@ p_new = figure(
 )
 p_combined = figure(
     title="3) Combined (new=red, old=blue, blocks=yellow)",
+    title_location="above",
     match_aspect=True,
     tools=TOOLS, active_scroll='wheel_zoom',
     x_axis_type="mercator", y_axis_type="mercator",
@@ -200,13 +229,14 @@ p_combined = figure(
 )
 p_blocks = figure(
     title="4) Blocks (selectable, yellow)",
+    title_location="above",
     match_aspect=True,
     tools=TOOLS + ",tap", active_scroll='wheel_zoom',
     x_axis_type="mercator", y_axis_type="mercator",
     sizing_mode="scale_both"
 )
 
-# Add tile providers (still produce a DeprecationWarning in Bokeh 3.x)
+# Add tile providers (will produce a DeprecationWarning in Bokeh 3.x)
 tile_map = {}
 def add_tiles():
     for f in [p_old, p_new, p_combined, p_blocks]:
@@ -361,15 +391,15 @@ def run_search():
     global_new_gdf    = n
     global_blocks_gdf = b
 
-    old_temp = split_multipolygons_to_cds(o,"taz_id")
-    new_temp = split_multipolygons_to_cds(n,"taz_id",["HH19","PERSNS19","WORKRS19","EMP19"])
-    blocks_temp = split_multipolygons_to_cds(b,"BLOCK_ID",["HH19","PERSNS19","WORKRS19","EMP19"])
+    old_temp = split_multipolygons_to_cds(o, "taz_id")
+    new_temp = split_multipolygons_to_cds(n, "taz_id", ["HH19", "PERSNS19", "WORKRS19", "EMP19"])
+    blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID", ["HH19", "PERSNS19", "WORKRS19", "EMP19"])
 
-    old_blocks_temp = split_multipolygons_to_cds(b,"BLOCK_ID")
-    new_blocks_temp = split_multipolygons_to_cds(b,"BLOCK_ID")
+    old_blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID")
+    new_blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID")
     comb_old_temp   = old_temp
     comb_new_temp   = new_temp
-    comb_blocks_temp= split_multipolygons_to_cds(b,"BLOCK_ID")
+    comb_blocks_temp= split_multipolygons_to_cds(b, "BLOCK_ID")
 
     old_taz_source.data         = dict(old_temp.data)
     new_taz_source.data         = dict(new_temp.data)
@@ -388,39 +418,30 @@ def run_search():
     update_new_taz_table()
     update_blocks_table()
 
-    # Zoom panel #1
+    # Zoom panel #1 to the bounds of the old taz (with a little extra margin)
     minx, miny, maxx, maxy = o.total_bounds
-    if minx==maxx or miny==maxy:
-        minx-=1000; maxx+=1000
-        miny-=1000; maxy+=1000
+    if minx == maxx or miny == maxy:
+        minx -= 1000; maxx += 1000
+        miny -= 1000; maxy += 1000
     else:
-        dx = maxx-minx
-        dy = maxy-miny
-        minx-=0.05*dx
-        maxx+=0.05*dx
-        miny-=0.05*dy
-        maxy+=0.05*dy
+        dx = maxx - minx
+        dy = maxy - miny
+        minx -= 0.05 * dx
+        maxx += 0.05 * dx
+        miny -= 0.05 * dy
+        maxy += 0.05 * dy
 
     p_old.x_range.start = minx
     p_old.x_range.end   = maxx
     p_old.y_range.start = miny
     p_old.y_range.end   = maxy
 
-    # auto-match all 4 => same bounding box
-    p_new.x_range.start      = minx
-    p_new.x_range.end        = maxx
-    p_new.y_range.start      = miny
-    p_new.y_range.end        = maxy
-
-    p_combined.x_range.start = minx
-    p_combined.x_range.end   = maxx
-    p_combined.y_range.start = miny
-    p_combined.y_range.end   = maxy
-
-    p_blocks.x_range.start   = minx
-    p_blocks.x_range.end     = maxx
-    p_blocks.y_range.start   = miny
-    p_blocks.y_range.end     = maxy
+    # Auto-match all 4 panels => same bounding box
+    for p in [p_new, p_combined, p_blocks]:
+        p.x_range.start = minx
+        p.x_range.end = maxx
+        p.y_range.start = miny
+        p.y_range.end = maxy
 
 def on_search_click():
     run_search()
@@ -448,21 +469,12 @@ def on_tile_select_change(attr, old, new):
 tile_select.on_change("value", on_tile_select_change)
 
 def on_match_zoom_click():
-    # copy p_old => others
-    p_new.x_range.start      = p_old.x_range.start
-    p_new.x_range.end        = p_old.x_range.end
-    p_new.y_range.start      = p_old.y_range.start
-    p_new.y_range.end        = p_old.y_range.end
-
-    p_combined.x_range.start = p_old.x_range.start
-    p_combined.x_range.end   = p_old.x_range.end
-    p_combined.y_range.start = p_old.y_range.start
-    p_combined.y_range.end   = p_old.y_range.end
-
-    p_blocks.x_range.start   = p_old.x_range.start
-    p_blocks.x_range.end     = p_old.x_range.end
-    p_blocks.y_range.start   = p_old.y_range.start
-    p_blocks.y_range.end     = p_old.y_range.end
+    # Copy p_old's range to the other panels
+    for p in [p_new, p_combined, p_blocks]:
+        p.x_range.start = p_old.x_range.start
+        p.x_range.end   = p_old.x_range.end
+        p.y_range.start = p_old.y_range.start
+        p.y_range.end   = p_old.y_range.end
 
 match_zoom_btn.on_click(on_match_zoom_click)
 
@@ -494,7 +506,6 @@ tables_col = column(
     min_width=100,  # Ensures it doesn't shrink too much
     max_width=375  # Prevents it from taking up too much space
 )
-
 
 main_row = row(maps_col, tables_col, sizing_mode="stretch_both")
 
