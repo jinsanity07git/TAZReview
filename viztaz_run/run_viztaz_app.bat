@@ -1,31 +1,33 @@
 @echo off
 cd /d "%~dp0"
 
-:: Set virtual environment name
-set VENV_DIR=viztaz_venv
+:: Set Conda environment name
+set CONDA_ENV=viztaz_env
 
-:: Check if Python is installed
-where python >nul 2>nul
+:: Check if Conda is installed
+where conda >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [ERROR] Python is not installed or not in PATH.
+    echo [ERROR] Conda is not installed or not in PATH.
     pause
     exit /b
 )
 
-:: Step 1: Check if the virtual environment exists
-if exist "%VENV_DIR%\Scripts\activate" (
-    echo Virtual environment found. Activating...
-) else (
-    echo Creating virtual environment...
-    python -m venv "%VENV_DIR%"
+:: Step 1: Check if Conda environment exists
+call conda env list | findstr /C:"%CONDA_ENV%" >nul
+if %errorlevel% neq 0 (
+    echo Conda environment "%CONDA_ENV%" not found.
+    echo Creating new Conda environment...
+    call conda create --name "%CONDA_ENV%" python=3.10 -y
     echo Installing dependencies...
-    call "%VENV_DIR%\Scripts\activate"
+    call conda activate "%CONDA_ENV%"
     pip install -r requirements.txt
+) else (
+    echo Conda environment "%CONDA_ENV%" found.
 )
 
-:: Step 2: Activate the virtual environment
-echo Activating virtual environment...
-call "%VENV_DIR%\Scripts\activate"
+:: Step 2: Activate the Conda environment
+echo Activating Conda environment...
+call conda activate "%CONDA_ENV%"
 
 :: Step 3: Check if viztaz_app.py exists before launching Bokeh
 if not exist "viztaz_app.py" (
