@@ -17,15 +17,22 @@ Features:
  - TAZ ID in green if found, or red "[TAZ Not Found]" if invalid
 
 Modifications in this version:
-  1. Map titles are always visible (moved above the plot area).
-  2. New TAZes and blocks are filtered based on intersection with a 1‑km buffer (previously 2 km) 
-     around the centroid of the old TAZ, but their full original shapes are displayed.
-  3. A light–blue filled 1‑km “buffer” is drawn on the old TAZ (1st) panel.
-  4. When hovering over the old TAZ buffer the TAZ ID is shown.
-  5. The old TAZ layer remains non–clickable.
-  6. Additionally, all old TAZ features that intersect the 1‑km buffer are outlined 
-     (gray, dotted) so you can see all the neighboring areas.
-  7. Shapefiles are read from folders (one bundle per folder).
+ 1. Map titles are always visible (added via external Divs).
+ 2. New TAZ and blocks are filtered based on intersection with a 1‑km buffer (previously 2 km) 
+    around the centroid of the old TAZ, but their full original shapes are displayed.
+ 3. A light–blue filled 1‑km “buffer” is drawn on the old TAZ (1st) panel.
+ 4. When hovering over the old TAZ buffer the TAZ ID is shown.
+ 5. The old TAZ layer remains non–clickable.
+ 6. Additionally, all old TAZ features that intersect the 1‑km buffer are outlined 
+    (gray, dotted) so you can see all the neighboring areas.
+ 7. Shapefiles are read from folders (one bundle per folder).
+ 8. The tables now also include additional 2049 data columns.
+ 9. The tables are now horizontally scrollable, with columns made a bit narrower.
+10. Extra text box for comma-delimited TAZ IDs displays additional old TAZ shapes in purple.
+11. TAZ IDs are now drawn as text labels: on the top–left (old TAZ) in blue and on the top–right (new TAZ) in red.
+12. The text labels are bolded.
+13. The hover tooltip showing a TAZ ID appears only when the mouse is over the actual TAZ polygon.
+
 """
 
 import os, glob
@@ -48,8 +55,8 @@ from bokeh.tile_providers import CARTODBPOSITRON, ESRI_IMAGERY  # DeprecationWar
 # -----------------------------------------------------------------------------
 # Update these folder paths as needed.
 old_taz_folder = "./shapefiles/old_taz_shapefile"   # folder containing all old TAZ shapefile components
-new_taz_folder = "./shapefiles/new_taz_shapefile"   # folder containing all new TAZ shapefile components
-blocks_folder  = "./shapefiles/blocks_shapefile"     # folder containing all blocks shapefile components
+new_taz_folder = "./shapefiles/new_taz_shapefile"     # folder containing all new TAZ shapefile components
+blocks_folder  = "./shapefiles/blocks_shapefile"      # folder containing all blocks shapefile components
 
 def find_shapefile_in_folder(folder):
     shp_files = glob.glob(os.path.join(folder, "*.shp"))
@@ -101,6 +108,15 @@ if 'workrs19' in gdf_new_taz.columns:
     rename_map_new['workrs19'] = 'WORKRS19'
 if 'emp19' in gdf_new_taz.columns:
     rename_map_new['emp19']  = 'EMP19'
+# (Assuming that the 49 columns in the new TAZ data are named accordingly)
+if 'hh49' in gdf_new_taz.columns:
+    rename_map_new['hh49'] = 'HH49'
+if 'persns49' in gdf_new_taz.columns:
+    rename_map_new['persns49'] = 'PERSNS49'
+if 'workrs49' in gdf_new_taz.columns:
+    rename_map_new['workrs49'] = 'WORKRS49'
+if 'emp49' in gdf_new_taz.columns:
+    rename_map_new['emp49']  = 'EMP49'
 if rename_map_new:
     gdf_new_taz = gdf_new_taz.rename(columns=rename_map_new)
 
@@ -148,6 +164,30 @@ def split_multipolygons_to_cds(gdf, id_field, ensure_cols=None):
         data[c] = attr_data[c]
     return ColumnDataSource(data)
 
+def split_multipolygons_to_text(gdf, id_field):
+    """
+    Returns a dictionary with centroid coordinates (cx, cy) and the id.
+    This is used to add text labels on the map.
+    """
+    all_cx, all_cy, all_ids = [], [], []
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None or geom.is_empty:
+            continue
+        row_id = str(row[id_field])
+        if geom.geom_type == "MultiPolygon":
+            for subpoly in geom.geoms:
+                centroid = subpoly.centroid
+                all_cx.append(centroid.x)
+                all_cy.append(centroid.y)
+                all_ids.append(row_id)
+        elif geom.geom_type == "Polygon":
+            centroid = geom.centroid
+            all_cx.append(centroid.x)
+            all_cy.append(centroid.y)
+            all_ids.append(row_id)
+    return {"cx": all_cx, "cy": all_cy, "id": all_ids}
+
 def filter_old_taz(old_id_int):
     # Get the selected TAZ by id (this may return one or more rows)
     subset_old = gdf_old_taz[gdf_old_taz['taz_id'] == old_id_int]
@@ -183,66 +223,88 @@ def add_sum_row(d, colnames):
     return d
 
 # -----------------------------------------------------------------------------
-# 3. DataSources for the 4 panels
+# 3. DataSources for the 4 panels and for text labels
 # -----------------------------------------------------------------------------
 old_taz_source        = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 old_taz_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
-new_taz_source        = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[]))
+# Include the 2049 fields.
+new_taz_source = ColumnDataSource(dict(xs=[], ys=[], id=[], 
+                                       HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
+                                       HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
+# Define new_taz_blocks_source (used for additional outlines in panel #2)
 new_taz_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
+blocks_source  = ColumnDataSource(dict(xs=[], ys=[], id=[], 
+                                        HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
+                                        HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
+
 combined_old_source    = ColumnDataSource(dict(xs=[], ys=[], id=[]))
-combined_new_source    = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[]))
+combined_new_source    = ColumnDataSource(dict(xs=[], ys=[], id=[], 
+                                               HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
+                                               HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
 combined_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
-blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[]))
-
-# NEW: Data source for the 1 km old TAZ buffer (filled polygon)
+# Data source for the 1 km old TAZ buffer (filled polygon)
 old_taz_buffer_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
-# NEW: Data source for neighbor (all old TAZ outlines intersecting the buffer)
+# Data source for neighbor (all old TAZ outlines intersecting the buffer)
 old_taz_neighbors_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
+
+# -----------------------------------------------------------------------------
+# 3a. Data source for extra old TAZ shapes (to be drawn in light purple)
+# -----------------------------------------------------------------------------
+extra_old_taz_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
+
+# -----------------------------------------------------------------------------
+# NEW: Data sources for text labels for old and new TAZ IDs
+# -----------------------------------------------------------------------------
+old_taz_text_source = ColumnDataSource(dict(cx=[], cy=[], id=[]))
+new_taz_text_source = ColumnDataSource(dict(cx=[], cy=[], id=[]))
+extra_old_taz_text_source = ColumnDataSource(dict(cx=[], cy=[], id=[]))
 
 global_new_gdf    = None
 global_blocks_gdf = None
 
 # -----------------------------------------------------------------------------
-# 4. Figures (with titles always shown above the plot)
+# 4. Figures (without built-in titles; we will add external Divs for the titles)
 # -----------------------------------------------------------------------------
 TOOLS = "pan,wheel_zoom,box_zoom,reset"
 
 p_old = figure(
-    title="1) Old TAZ (blue)",
-    title_location="above",
+    title=None,
     match_aspect=True,
     tools=TOOLS, active_scroll='wheel_zoom',
     x_axis_type="mercator", y_axis_type="mercator",
     sizing_mode="scale_both"
 )
 p_new = figure(
-    title="2) New TAZ (red; blocks not selectable)",
-    title_location="above",
+    title=None,
     match_aspect=True,
     tools=TOOLS + ",tap", active_scroll='wheel_zoom',
     x_axis_type="mercator", y_axis_type="mercator",
     sizing_mode="scale_both"
 )
 p_combined = figure(
-    title="3) Combined (new=red, old=blue, blocks=yellow)",
-    title_location="above",
+    title=None,
     match_aspect=True,
     tools=TOOLS, active_scroll='wheel_zoom',
     x_axis_type="mercator", y_axis_type="mercator",
     sizing_mode="scale_both"
 )
 p_blocks = figure(
-    title="4) Blocks (selectable, yellow)",
-    title_location="above",
+    title=None,
     match_aspect=True,
     tools=TOOLS + ",tap", active_scroll='wheel_zoom',
     x_axis_type="mercator", y_axis_type="mercator",
     sizing_mode="scale_both"
 )
+
+# Create Divs for the titles so they remain visible.
+div_old_title      = Div(text="<b>1) Old TAZ (blue)</b>", styles={'font-size': '16px'})
+div_new_title      = Div(text="<b>2) New TAZ (red; blocks not selectable)</b>", styles={'font-size': '16px'})
+div_combined_title = Div(text="<b>3) Combined (new=red, old=blue, blocks=yellow)</b>", styles={'font-size': '16px'})
+div_blocks_title   = Div(text="<b>4) Blocks (selectable, yellow)</b>", styles={'font-size': '16px'})
 
 # Add tile providers (will produce a DeprecationWarning in Bokeh 3.x)
 tile_map = {}
@@ -256,11 +318,11 @@ add_tiles()
 # -----------------------------------------------------------------------------
 # 5. Patch Glyphs
 # -----------------------------------------------------------------------------
-# Panel #1: Draw the old TAZ outlines (blue for the selected ones)
-p_old.patches(
+# Panel #1: Draw the old TAZ outlines (blue for the selected ones) with a light blue fill.
+renderer_old_taz = p_old.patches(
     xs="xs", ys="ys",
     source=old_taz_source,
-    fill_color=None,
+    fill_color="lightblue", fill_alpha=0.3,
     line_color="blue",
     line_width=2
 )
@@ -270,7 +332,7 @@ p_old.patches(
     fill_color=None, line_color="black", line_width=2, line_dash='dotted'
 )
 
-# NEW: Add a filled 1 km buffer for the old TAZ (non-clickable; used for hover info)
+# Add a filled 1 km buffer for the old TAZ (non-clickable; used for hover info)
 old_taz_buffer_renderer = p_old.patches(
     xs="xs", ys="ys",
     source=old_taz_buffer_source,
@@ -280,9 +342,9 @@ old_taz_buffer_renderer = p_old.patches(
 # Ensure the buffer is at the bottom so that outlines remain visible:
 p_old.renderers.remove(old_taz_buffer_renderer)
 p_old.renderers.insert(0, old_taz_buffer_renderer)
-p_old.add_tools(HoverTool(renderers=[old_taz_buffer_renderer], tooltips=[("Old TAZ ID", "@id")]))
+p_old.add_tools(HoverTool(renderers=[old_taz_buffer_renderer]))
 
-# NEW: Add neighbor outlines (for all old TAZ features that intersect the 1 km buffer)
+# Add neighbor outlines (for all old TAZ features that intersect the buffer)
 old_taz_neighbors_renderer = p_old.patches(
     xs="xs", ys="ys",
     source=old_taz_neighbors_source,
@@ -293,6 +355,18 @@ old_taz_neighbors_renderer = p_old.patches(
 )
 p_old.renderers.remove(old_taz_neighbors_renderer)
 p_old.renderers.insert(1, old_taz_neighbors_renderer)
+
+# --- NEW: Draw extra old TAZ shapes in light purple and assign to a variable ---
+renderer_extra_old_taz = p_old.patches(
+    xs="xs", ys="ys",
+    source=extra_old_taz_source,
+    fill_color="#E6E6FA", fill_alpha=0.3,
+    line_color="purple", line_width=2
+)
+# --- NEW: Add a hover tool for both the blue (old_taz_source) and light purple (extra_old_taz_source) outlines ---
+hover_old_patches = HoverTool(tooltips=[("Old TAZ ID", "@id")],
+                              renderers=[renderer_old_taz, renderer_extra_old_taz])
+p_old.add_tools(hover_old_patches)
 
 # Panel #2: New TAZ – red boundary with yellow fill on selection
 taz_glyph_new = p_new.patches(
@@ -342,7 +416,39 @@ p_blocks.patches(
 )
 
 # -----------------------------------------------------------------------------
-# 6. Tables with persistent Sum row
+# 5a. Extra Old TAZ Glyphs (light purple) added to p_old and p_combined panels
+# -----------------------------------------------------------------------------
+p_old.patches(
+    xs="xs", ys="ys",
+    source=extra_old_taz_source,
+    fill_color="#E6E6FA", fill_alpha=0.3,
+    line_color="purple", line_width=2
+)
+
+p_combined.patches(
+    xs="xs", ys="ys",
+    source=extra_old_taz_source,
+    fill_color="#E6E6FA", fill_alpha=0.3,
+    line_color="purple", line_width=2
+)
+
+# -----------------------------------------------------------------------------
+# NEW: Add text glyphs to show TAZ IDs on the top panels.
+#       In p_old the text is drawn in blue and in p_new it is drawn in red.
+#       The text labels are bold.
+# -----------------------------------------------------------------------------
+p_old.text(x="cx", y="cy", text="id", source=old_taz_text_source,
+           text_color="blue", text_font_size="10pt", text_font_style="bold",
+           text_align="center", text_baseline="middle")
+p_old.text(x="cx", y="cy", text="id", source=extra_old_taz_text_source,
+           text_color="blue", text_font_size="10pt", text_font_style="bold",
+           text_align="center", text_baseline="middle")
+p_new.text(x="cx", y="cy", text="id", source=new_taz_text_source,
+           text_color="red", text_font_size="10pt", text_font_style="bold",
+           text_align="center", text_baseline="middle")
+
+# -----------------------------------------------------------------------------
+# 6. Tables with persistent Sum row (including 49 data columns)
 # -----------------------------------------------------------------------------
 sum_template = """
 <% if (id == 'Sum') { %>
@@ -352,37 +458,50 @@ sum_template = """
 <% } %>
 """
 bold_formatter = HTMLTemplateFormatter(template=sum_template)
+# Use narrower fixed column widths: 40 for ID and 70 for the other columns.
 table_cols = [
-    TableColumn(field="id",       title="ID",       formatter=bold_formatter),
-    TableColumn(field="HH19",     title="HH19",     formatter=bold_formatter),
-    TableColumn(field="PERSNS19", title="PERSNS19", formatter=bold_formatter),
-    TableColumn(field="WORKRS19", title="WORKRS19", formatter=bold_formatter),
-    TableColumn(field="EMP19",    title="EMP19",    formatter=bold_formatter),
+    TableColumn(field="id",         title="ID",         formatter=bold_formatter, width=40),
+    TableColumn(field="HH19",       title="HH19",       formatter=bold_formatter, width=70),
+    TableColumn(field="PERSNS19",   title="PERSNS19",   formatter=bold_formatter, width=70),
+    TableColumn(field="WORKRS19",   title="WORKRS19",   formatter=bold_formatter, width=70),
+    TableColumn(field="EMP19",      title="EMP19",      formatter=bold_formatter, width=70),
+    TableColumn(field="HH49",     title="HH49",     formatter=bold_formatter, width=70),
+    TableColumn(field="PERSNS49", title="PERSNS49", formatter=bold_formatter, width=70),
+    TableColumn(field="WORKRS49", title="WORKRS49", formatter=bold_formatter, width=70),
+    TableColumn(field="EMP49",    title="EMP49",    formatter=bold_formatter, width=70),
 ]
 
-new_taz_table_source = ColumnDataSource(dict(id=[], HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[]))
-blocks_table_source  = ColumnDataSource(dict(id=[], HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[]))
+new_taz_table_source = ColumnDataSource(dict(id=[], 
+                                              HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
+                                              HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
+blocks_table_source  = ColumnDataSource(dict(id=[], 
+                                              HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
+                                              HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
 
-new_taz_data_table = DataTable(source=new_taz_table_source, columns=table_cols, width=350, height=300)
-blocks_data_table  = DataTable(source=blocks_table_source,  columns=table_cols, width=350, height=300)
+# Set the overall DataTable width to 550 so that the natural total width (600) is larger, 
+# causing horizontal scrolling.
+new_taz_data_table = DataTable(source=new_taz_table_source, columns=table_cols, width=550, height=300, fit_columns=False)
+blocks_data_table  = DataTable(source=blocks_table_source,  columns=table_cols, width=550, height=300, fit_columns=False)
 
 def update_new_taz_table():
     inds = new_taz_source.selected.indices
-    d = {"id":[], "HH19":[], "PERSNS19":[], "WORKRS19":[], "EMP19":[]}
+    d = {"id":[], "HH19":[], "PERSNS19":[], "WORKRS19":[], "EMP19":[],
+         "HH49":[], "PERSNS49":[], "WORKRS49":[], "EMP49":[]}
     if inds:
         for c in d.keys():
             if c in new_taz_source.data:
                 d[c] = [new_taz_source.data[c][i] for i in inds]
-    d = add_sum_row(d, ["HH19","PERSNS19","WORKRS19","EMP19"])
+    d = add_sum_row(d, ["HH19","PERSNS19","WORKRS19","EMP19", "HH49","PERSNS49","WORKRS49","EMP49"])
     new_taz_table_source.data = d
 
 def update_blocks_table():
     inds = blocks_source.selected.indices
-    d = {"id":[], "HH19":[], "PERSNS19":[], "WORKRS19":[], "EMP19":[]}
+    d = {"id":[], "HH19":[], "PERSNS19":[], "WORKRS19":[], "EMP19":[],
+         "HH49":[], "PERSNS49":[], "WORKRS49":[], "EMP49":[]}
     if inds:
         for c in d.keys():
             d[c] = [blocks_source.data[c][i] for i in inds]
-    d = add_sum_row(d, ["HH19","PERSNS19","WORKRS19","EMP19"])
+    d = add_sum_row(d, ["HH19","PERSNS19","WORKRS19","EMP19", "HH49","PERSNS49","WORKRS49","EMP49"])
     blocks_table_source.data = d
 
 new_taz_source.selected.on_change("indices", lambda attr, old, new: update_new_taz_table())
@@ -396,6 +515,12 @@ label_taz    = Div(text="<b>Enter Old TAZ ID:</b>", width=120)
 text_input   = TextInput(value="", title="", placeholder="TAZ ID...", width=100)
 search_button= Button(label="Search TAZ", button_type="success", width=80)
 match_zoom_btn=Button(label="Match 1st Panel Zoom", width=130)
+
+# ----- NEW: Extra TAZ search for purple shapes -----
+extra_taz_label = Div(text="<b>Extra TAZ IDs (comma separated):</b>", width=200)
+extra_taz_input = TextInput(value="", title="", placeholder="e.g. 101, 102, 103", width=150)
+extra_search_button = Button(label="Search Extra TAZ", button_type="primary", width=120)
+# ----------------------------------------------------
 
 tile_label   = Div(text="<b>Selected Map Background:</b>", width=150)
 tile_select  = Select(value="CartoDB Positron", options=["CartoDB Positron","ESRI Satellite"], width=140)
@@ -435,14 +560,18 @@ def run_search():
         "id": [str(old_id_int)]
     }
 
-    # NEW: Update neighbor outlines to show all old TAZes intersecting the buffer
+    # Update neighbor outlines to show all old TAZes intersecting the buffer
     neighbors = gdf_old_taz[gdf_old_taz.intersects(buffer_geom)].copy()
     neighbors_temp = split_multipolygons_to_cds(neighbors, "taz_id")
     old_taz_neighbors_source.data = dict(neighbors_temp.data)
 
     old_temp = split_multipolygons_to_cds(o, "taz_id")
-    new_temp = split_multipolygons_to_cds(n, "taz_id", ["HH19", "PERSNS19", "WORKRS19", "EMP19"])
-    blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID", ["HH19", "PERSNS19", "WORKRS19", "EMP19"])
+    new_temp = split_multipolygons_to_cds(n, "taz_id", 
+                                          ["HH19", "PERSNS19", "WORKRS19", "EMP19",
+                                           "HH49", "PERSNS49", "WORKRS49", "EMP49"])
+    blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID", 
+                                             ["HH19", "PERSNS19", "WORKRS19", "EMP19",
+                                              "HH49", "PERSNS49", "WORKRS49", "EMP49"])
 
     old_blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID")
     new_blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID")
@@ -458,6 +587,13 @@ def run_search():
     combined_old_source.data    = dict(comb_old_temp.data)
     combined_new_source.data    = dict(comb_new_temp.data)
     combined_blocks_source.data = dict(comb_blocks_temp.data)
+
+    # --- NEW: Update text labels for old and new TAZ in the top panels ---
+    old_text_data = split_multipolygons_to_text(o, "taz_id")
+    old_taz_text_source.data = old_text_data
+
+    new_text_data = split_multipolygons_to_text(n, "taz_id")
+    new_taz_text_source.data = new_text_data
 
     # Clear tables & selection
     new_taz_source.selected.indices = []
@@ -528,10 +664,46 @@ def on_match_zoom_click():
 match_zoom_btn.on_click(on_match_zoom_click)
 
 # -----------------------------------------------------------------------------
+# Extra TAZ Search Callback: Update extra_old_taz_source and its text labels from comma-delimited IDs
+# -----------------------------------------------------------------------------
+def run_extra_search():
+    val = extra_taz_input.value.strip()
+    if not val:
+        extra_old_taz_source.data = {"xs": [], "ys": [], "id": []}
+        extra_old_taz_text_source.data = {"cx": [], "cy": [], "id": []}
+        return
+    try:
+        # Parse the comma-separated IDs (assumed to be integers)
+        id_list = [int(x.strip()) for x in val.split(",") if x.strip() != ""]
+    except ValueError:
+        # In case of any error in conversion, clear the extra shapes.
+        extra_old_taz_source.data = {"xs": [], "ys": [], "id": []}
+        extra_old_taz_text_source.data = {"cx": [], "cy": [], "id": []}
+        return
+    # Filter the old TAZ GeoDataFrame for these IDs.
+    subset_extra = gdf_old_taz[gdf_old_taz['taz_id'].isin(id_list)]
+    if subset_extra.empty:
+        extra_old_taz_source.data = {"xs": [], "ys": [], "id": []}
+        extra_old_taz_text_source.data = {"cx": [], "cy": [], "id": []}
+        return
+    # Use the helper function to convert the shapes into a ColumnDataSource format.
+    extra_cdsrc = split_multipolygons_to_cds(subset_extra, "taz_id")
+    extra_old_taz_source.data = dict(extra_cdsrc.data)
+    # --- NEW: Update text labels for the extra old TAZ features ---
+    extra_text_data = split_multipolygons_to_text(subset_extra, "taz_id")
+    extra_old_taz_text_source.data = extra_text_data
+
+# Wire the extra search button to its callback.
+extra_search_button.on_click(run_extra_search)
+
+# -----------------------------------------------------------------------------
 # 9. Layout
 # -----------------------------------------------------------------------------
-# Row 1: left: "Enter Old TAZ" + text; center: "Currently Searching TAZ" label; right: "Selected Map BG"
-row1_left = row(label_taz, text_input, Spacer(width=10))
+# Row 1: left: "Enter Old TAZ" + text; now also extra TAZ input + button; center: "Currently Searching TAZ" label; right: "Selected Map BG"
+row1_left = row(
+    label_taz, text_input, Spacer(width=10),
+    extra_taz_label, extra_taz_input, extra_search_button
+)
 row1_center = row(search_label)
 row1_right = row(Div(text="<b>Selected Map Background:</b>", width=150), tile_select)
 
@@ -540,8 +712,17 @@ row1 = row(row1_left, Spacer(width=50), row1_center, Spacer(width=50), row1_righ
 # Row 2: "Search TAZ" + "Match 1st Panel Zoom" side by side
 row2 = row(search_button, match_zoom_btn, sizing_mode="stretch_width")
 
-top_maps = row(p_old, p_new, sizing_mode="scale_both")
-bot_maps = row(p_combined, p_blocks, sizing_mode="scale_both")
+# Wrap each figure with its Div title so that the titles remain visible.
+top_maps = row(
+    column(div_old_title, p_old, sizing_mode="scale_both"),
+    column(div_new_title, p_new, sizing_mode="scale_both"),
+    sizing_mode="scale_both"
+)
+bot_maps = row(
+    column(div_combined_title, p_combined, sizing_mode="scale_both"),
+    column(div_blocks_title, p_blocks, sizing_mode="scale_both"),
+    sizing_mode="scale_both"
+)
 maps_col = column(top_maps, bot_maps, sizing_mode="stretch_both")
 
 # Two tables (fixed width ~1/4)
