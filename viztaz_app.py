@@ -1,5 +1,9 @@
 """
-my_app.py
+viztaz_app.py
+
+---------------------------------
+bokeh serve --show viztaz_app.py
+---------------------------------
 
 Implements your layout requests without doc.stylesheets, to avoid errors on Bokeh 3.x.
 
