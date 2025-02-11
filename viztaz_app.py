@@ -28,6 +28,8 @@ Modifications in this version:
  7. Shapefiles are read from folders (one bundle per folder).
  8. The tables now also include additional 2049 data columns.
  9. The tables are now horizontally scrollable, with columns made a bit narrower.
+10. NEW: Extra text box for comma-delimited TAZ IDs to display additional old TAZ shapes in purple 
+    in the top left and bottom left panels.
 """
 
 import os, glob
@@ -50,8 +52,8 @@ from bokeh.tile_providers import CARTODBPOSITRON, ESRI_IMAGERY  # DeprecationWar
 # -----------------------------------------------------------------------------
 # Update these folder paths as needed.
 old_taz_folder = "./shapefiles/old_taz_shapefile"   # folder containing all old TAZ shapefile components
-new_taz_folder = "./shapefiles/new_taz_shapefile"   # folder containing all new TAZ shapefile components
-blocks_folder  = "./shapefiles/blocks_shapefile"     # folder containing all blocks shapefile components
+new_taz_folder = "./shapefiles/new_taz_shapefile"     # folder containing all new TAZ shapefile components
+blocks_folder  = "./shapefiles/blocks_shapefile"      # folder containing all blocks shapefile components
 
 def find_shapefile_in_folder(folder):
     shp_files = glob.glob(os.path.join(folder, "*.shp"))
@@ -222,6 +224,11 @@ old_taz_buffer_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 # Data source for neighbor (all old TAZ outlines intersecting the buffer)
 old_taz_neighbors_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
+# -----------------------------------------------------------------------------
+# 3a. Data source for extra old TAZ shapes (to be drawn in purple)
+# -----------------------------------------------------------------------------
+extra_old_taz_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
+
 global_new_gdf    = None
 global_blocks_gdf = None
 
@@ -364,6 +371,23 @@ p_blocks.patches(
 )
 
 # -----------------------------------------------------------------------------
+# 5a. Extra Old TAZ Glyphs (purple) added to p_old and p_combined panels
+# -----------------------------------------------------------------------------
+p_old.patches(
+    xs="xs", ys="ys",
+    source=extra_old_taz_source,
+    fill_color="purple", fill_alpha=0.3,
+    line_color="purple", line_width=2
+)
+
+p_combined.patches(
+    xs="xs", ys="ys",
+    source=extra_old_taz_source,
+    fill_color="purple", fill_alpha=0.3,
+    line_color="purple", line_width=2
+)
+
+# -----------------------------------------------------------------------------
 # 6. Tables with persistent Sum row (including 49 data columns)
 # -----------------------------------------------------------------------------
 sum_template = """
@@ -431,6 +455,12 @@ label_taz    = Div(text="<b>Enter Old TAZ ID:</b>", width=120)
 text_input   = TextInput(value="", title="", placeholder="TAZ ID...", width=100)
 search_button= Button(label="Search TAZ", button_type="success", width=80)
 match_zoom_btn=Button(label="Match 1st Panel Zoom", width=130)
+
+# ----- NEW: Extra TAZ search for purple shapes -----
+extra_taz_label = Div(text="<b>Extra TAZ IDs (comma separated):</b>", width=200)
+extra_taz_input = TextInput(value="", title="", placeholder="e.g. 101, 102, 103", width=150)
+extra_search_button = Button(label="Search Extra TAZ", button_type="primary", width=120)
+# ----------------------------------------------------
 
 tile_label   = Div(text="<b>Selected Map Background:</b>", width=150)
 tile_select  = Select(value="CartoDB Positron", options=["CartoDB Positron","ESRI Satellite"], width=140)
@@ -567,10 +597,40 @@ def on_match_zoom_click():
 match_zoom_btn.on_click(on_match_zoom_click)
 
 # -----------------------------------------------------------------------------
+# Extra TAZ Search Callback: Update extra_old_taz_source from comma-delimited IDs
+# -----------------------------------------------------------------------------
+def run_extra_search():
+    val = extra_taz_input.value.strip()
+    if not val:
+        extra_old_taz_source.data = {"xs": [], "ys": [], "id": []}
+        return
+    try:
+        # Parse the comma-separated IDs (assumed to be integers)
+        id_list = [int(x.strip()) for x in val.split(",") if x.strip() != ""]
+    except ValueError:
+        # In case of any error in conversion, clear the extra shapes.
+        extra_old_taz_source.data = {"xs": [], "ys": [], "id": []}
+        return
+    # Filter the old TAZ GeoDataFrame for these IDs.
+    subset_extra = gdf_old_taz[gdf_old_taz['taz_id'].isin(id_list)]
+    if subset_extra.empty:
+        extra_old_taz_source.data = {"xs": [], "ys": [], "id": []}
+        return
+    # Use the helper function to convert the shapes into a ColumnDataSource format.
+    extra_cdsrc = split_multipolygons_to_cds(subset_extra, "taz_id")
+    extra_old_taz_source.data = dict(extra_cdsrc.data)
+
+# Wire the extra search button to its callback.
+extra_search_button.on_click(run_extra_search)
+
+# -----------------------------------------------------------------------------
 # 9. Layout
 # -----------------------------------------------------------------------------
-# Row 1: left: "Enter Old TAZ" + text; center: "Currently Searching TAZ" label; right: "Selected Map BG"
-row1_left = row(label_taz, text_input, Spacer(width=10))
+# Row 1: left: "Enter Old TAZ" + text; now also extra TAZ input + button; center: "Currently Searching TAZ" label; right: "Selected Map BG"
+row1_left = row(
+    label_taz, text_input, Spacer(width=10),
+    extra_taz_label, extra_taz_input, extra_search_button
+)
 row1_center = row(search_label)
 row1_right = row(Div(text="<b>Selected Map Background:</b>", width=150), tile_select)
 
