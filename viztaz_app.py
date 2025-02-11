@@ -26,7 +26,7 @@ Modifications in this version:
  6. Additionally, all old TAZ features that intersect the 1‑km buffer are outlined 
     (gray, dotted) so you can see all the neighboring areas.
  7. Shapefiles are read from folders (one bundle per folder).
- 8. The tables now also include additional 2050 data columns.
+ 8. The tables now also include additional 2049 data columns.
  9. The tables are now horizontally scrollable, with columns made a bit narrower.
 """
 
@@ -103,15 +103,15 @@ if 'workrs19' in gdf_new_taz.columns:
     rename_map_new['workrs19'] = 'WORKRS19'
 if 'emp19' in gdf_new_taz.columns:
     rename_map_new['emp19']  = 'EMP19'
-# (Assuming that the 50 columns in the new TAZ data are named accordingly)
-if 'hh50' in gdf_new_taz.columns:
-    rename_map_new['hh50'] = 'HH50'
-if 'persns50' in gdf_new_taz.columns:
-    rename_map_new['persns50'] = 'PERSNS50'
-if 'workrs50' in gdf_new_taz.columns:
-    rename_map_new['workrs50'] = 'WORKRS50'
-if 'emp50' in gdf_new_taz.columns:
-    rename_map_new['emp50']  = 'EMP50'
+# (Assuming that the 49 columns in the new TAZ data are named accordingly)
+if 'hh49' in gdf_new_taz.columns:
+    rename_map_new['hh49'] = 'HH49'
+if 'persns49' in gdf_new_taz.columns:
+    rename_map_new['persns49'] = 'PERSNS49'
+if 'workrs49' in gdf_new_taz.columns:
+    rename_map_new['workrs49'] = 'WORKRS49'
+if 'emp49' in gdf_new_taz.columns:
+    rename_map_new['emp49']  = 'EMP49'
 if rename_map_new:
     gdf_new_taz = gdf_new_taz.rename(columns=rename_map_new)
 
@@ -199,21 +199,21 @@ def add_sum_row(d, colnames):
 old_taz_source        = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 old_taz_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
-# Include the 2050 fields.
+# Include the 2049 fields.
 new_taz_source = ColumnDataSource(dict(xs=[], ys=[], id=[], 
                                        HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
-                                       HH50=[], PERSNS50=[], WORKRS50=[], EMP50=[]))
+                                       HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
 # Define new_taz_blocks_source (used for additional outlines in panel #2)
 new_taz_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
 blocks_source  = ColumnDataSource(dict(xs=[], ys=[], id=[], 
                                         HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
-                                        HH50=[], PERSNS50=[], WORKRS50=[], EMP50=[]))
+                                        HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
 
 combined_old_source    = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 combined_new_source    = ColumnDataSource(dict(xs=[], ys=[], id=[], 
                                                HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
-                                               HH50=[], PERSNS50=[], WORKRS50=[], EMP50=[]))
+                                               HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
 combined_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
 # Data source for the 1 km old TAZ buffer (filled polygon)
@@ -364,7 +364,7 @@ p_blocks.patches(
 )
 
 # -----------------------------------------------------------------------------
-# 6. Tables with persistent Sum row (including 50 data columns)
+# 6. Tables with persistent Sum row (including 49 data columns)
 # -----------------------------------------------------------------------------
 sum_template = """
 <% if (id == 'Sum') { %>
@@ -381,18 +381,18 @@ table_cols = [
     TableColumn(field="PERSNS19",   title="PERSNS19",   formatter=bold_formatter, width=70),
     TableColumn(field="WORKRS19",   title="WORKRS19",   formatter=bold_formatter, width=70),
     TableColumn(field="EMP19",      title="EMP19",      formatter=bold_formatter, width=70),
-    TableColumn(field="HH50",     title="HH50",     formatter=bold_formatter, width=70),
-    TableColumn(field="PERSNS50", title="PERSNS50", formatter=bold_formatter, width=70),
-    TableColumn(field="WORKRS50", title="WORKRS50", formatter=bold_formatter, width=70),
-    TableColumn(field="EMP50",    title="EMP50",    formatter=bold_formatter, width=70),
+    TableColumn(field="HH49",     title="HH49",     formatter=bold_formatter, width=70),
+    TableColumn(field="PERSNS49", title="PERSNS49", formatter=bold_formatter, width=70),
+    TableColumn(field="WORKRS49", title="WORKRS49", formatter=bold_formatter, width=70),
+    TableColumn(field="EMP49",    title="EMP49",    formatter=bold_formatter, width=70),
 ]
 
 new_taz_table_source = ColumnDataSource(dict(id=[], 
                                               HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
-                                              HH50=[], PERSNS50=[], WORKRS50=[], EMP50=[]))
+                                              HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
 blocks_table_source  = ColumnDataSource(dict(id=[], 
                                               HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[], 
-                                              HH50=[], PERSNS50=[], WORKRS50=[], EMP50=[]))
+                                              HH49=[], PERSNS49=[], WORKRS49=[], EMP49=[]))
 
 # Set the overall DataTable width to 550 so that the natural total width (600) is larger, 
 # causing horizontal scrolling.
@@ -402,22 +402,22 @@ blocks_data_table  = DataTable(source=blocks_table_source,  columns=table_cols, 
 def update_new_taz_table():
     inds = new_taz_source.selected.indices
     d = {"id":[], "HH19":[], "PERSNS19":[], "WORKRS19":[], "EMP19":[],
-         "HH50":[], "PERSNS50":[], "WORKRS50":[], "EMP50":[]}
+         "HH49":[], "PERSNS49":[], "WORKRS49":[], "EMP49":[]}
     if inds:
         for c in d.keys():
             if c in new_taz_source.data:
                 d[c] = [new_taz_source.data[c][i] for i in inds]
-    d = add_sum_row(d, ["HH19","PERSNS19","WORKRS19","EMP19", "HH50","PERSNS50","WORKRS50","EMP50"])
+    d = add_sum_row(d, ["HH19","PERSNS19","WORKRS19","EMP19", "HH49","PERSNS49","WORKRS49","EMP49"])
     new_taz_table_source.data = d
 
 def update_blocks_table():
     inds = blocks_source.selected.indices
     d = {"id":[], "HH19":[], "PERSNS19":[], "WORKRS19":[], "EMP19":[],
-         "HH50":[], "PERSNS50":[], "WORKRS50":[], "EMP50":[]}
+         "HH49":[], "PERSNS49":[], "WORKRS49":[], "EMP49":[]}
     if inds:
         for c in d.keys():
             d[c] = [blocks_source.data[c][i] for i in inds]
-    d = add_sum_row(d, ["HH19","PERSNS19","WORKRS19","EMP19", "HH50","PERSNS50","WORKRS50","EMP50"])
+    d = add_sum_row(d, ["HH19","PERSNS19","WORKRS19","EMP19", "HH49","PERSNS49","WORKRS49","EMP49"])
     blocks_table_source.data = d
 
 new_taz_source.selected.on_change("indices", lambda attr, old, new: update_new_taz_table())
@@ -478,10 +478,10 @@ def run_search():
     old_temp = split_multipolygons_to_cds(o, "taz_id")
     new_temp = split_multipolygons_to_cds(n, "taz_id", 
                                           ["HH19", "PERSNS19", "WORKRS19", "EMP19",
-                                           "HH50", "PERSNS50", "WORKRS50", "EMP50"])
+                                           "HH49", "PERSNS49", "WORKRS49", "EMP49"])
     blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID", 
                                              ["HH19", "PERSNS19", "WORKRS19", "EMP19",
-                                              "HH50", "PERSNS50", "WORKRS50", "EMP50"])
+                                              "HH49", "PERSNS49", "WORKRS49", "EMP49"])
 
     old_blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID")
     new_blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID")
