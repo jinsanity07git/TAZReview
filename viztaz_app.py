@@ -12,14 +12,20 @@ Features:
  - Main layout: ~3/4 maps (left) + ~1/4 tables (right)
  - Automatic zoom matching on TAZ search
  - TAZ polygons (red + yellow fill on selection) and blocks (yellow + black dotted on selection)
- - Old TAZ = blue in top-left & combined
+ - Old TAZ = blue in top-left & combined, plus neighbor outlines in gray (dotted)
  - Summation row always at table bottom, bolded
  - TAZ ID in green if found, or red "[TAZ Not Found]" if invalid
 
 Modifications in this version:
   1. Map titles are always visible (moved above the plot area).
-  2. New TAZes and blocks are clipped to the intersection with a 5-mile buffer around the centroid of the old TAZ.
-  3. Shapefiles are read from folders (one bundle per folder).
+  2. New TAZes and blocks are filtered based on intersection with a 1‑km buffer (previously 2 km) 
+     around the centroid of the old TAZ, but their full original shapes are displayed.
+  3. A light–blue filled 1‑km “buffer” is drawn on the old TAZ (1st) panel.
+  4. When hovering over the old TAZ buffer the TAZ ID is shown.
+  5. The old TAZ layer remains non–clickable.
+  6. Additionally, all old TAZ features that intersect the 1‑km buffer are outlined 
+     (gray, dotted) so you can see all the neighboring areas.
+  7. Shapefiles are read from folders (one bundle per folder).
 """
 
 import os, glob
@@ -143,25 +149,21 @@ def split_multipolygons_to_cds(gdf, id_field, ensure_cols=None):
     return ColumnDataSource(data)
 
 def filter_old_taz(old_id_int):
+    # Get the selected TAZ by id (this may return one or more rows)
     subset_old = gdf_old_taz[gdf_old_taz['taz_id'] == old_id_int]
     if subset_old.empty:
         return (None, None, None)
-    # Compute the union of the old TAZ polygons and then the centroid.
+    # Compute the union of the selected TAZ polygons and then the centroid.
     old_union = subset_old.unary_union
     centroid = old_union.centroid
-    buffer_radius = 1000  # in meters
+    buffer_radius = 1000  # Use 1 km (1000 m)
     buffer_geom = centroid.buffer(buffer_radius)
     
-    # Filter new taz and blocks to those that intersect the 5-mile buffer.
+    # Filter new TAZ and blocks to those that intersect the 1 km buffer.
     new_sub = gdf_new_taz[gdf_new_taz.intersects(buffer_geom)].copy()
     blocks_sub = gdf_blocks[gdf_blocks.intersects(buffer_geom)].copy()
     
-    # Clip the geometries to the buffer so that only the intersecting portions are displayed.
-    if not new_sub.empty:
-        new_sub["geometry"] = new_sub.geometry.intersection(buffer_geom)
-    if not blocks_sub.empty:
-        blocks_sub["geometry"] = blocks_sub.geometry.intersection(buffer_geom)
-    
+    # NOTE: We are NOT clipping the geometries with the buffer.
     return (subset_old, new_sub, blocks_sub)
 
 def add_sum_row(d, colnames):
@@ -194,6 +196,12 @@ combined_new_source    = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[], PER
 combined_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
 blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[], HH19=[], PERSNS19=[], WORKRS19=[], EMP19=[]))
+
+# NEW: Data source for the 1 km old TAZ buffer (filled polygon)
+old_taz_buffer_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
+
+# NEW: Data source for neighbor (all old TAZ outlines intersecting the buffer)
+old_taz_neighbors_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
 global_new_gdf    = None
 global_blocks_gdf = None
@@ -248,7 +256,7 @@ add_tiles()
 # -----------------------------------------------------------------------------
 # 5. Patch Glyphs
 # -----------------------------------------------------------------------------
-# Panel #1 => old TAZ => blue
+# Panel #1: Draw the old TAZ outlines (blue for the selected ones)
 p_old.patches(
     xs="xs", ys="ys",
     source=old_taz_source,
@@ -262,7 +270,31 @@ p_old.patches(
     fill_color=None, line_color="black", line_width=2, line_dash='dotted'
 )
 
-# Panel #2 => new TAZ => red boundary, fill yellow on selection
+# NEW: Add a filled 1 km buffer for the old TAZ (non-clickable; used for hover info)
+old_taz_buffer_renderer = p_old.patches(
+    xs="xs", ys="ys",
+    source=old_taz_buffer_source,
+    fill_color="lightblue", fill_alpha=0.3,
+    line_color=None
+)
+# Ensure the buffer is at the bottom so that outlines remain visible:
+p_old.renderers.remove(old_taz_buffer_renderer)
+p_old.renderers.insert(0, old_taz_buffer_renderer)
+p_old.add_tools(HoverTool(renderers=[old_taz_buffer_renderer], tooltips=[("Old TAZ ID", "@id")]))
+
+# NEW: Add neighbor outlines (for all old TAZ features that intersect the 1 km buffer)
+old_taz_neighbors_renderer = p_old.patches(
+    xs="xs", ys="ys",
+    source=old_taz_neighbors_source,
+    fill_color=None,
+    line_color="gray",
+    line_width=2,
+    line_dash="dotted"
+)
+p_old.renderers.remove(old_taz_neighbors_renderer)
+p_old.renderers.insert(1, old_taz_neighbors_renderer)
+
+# Panel #2: New TAZ – red boundary with yellow fill on selection
 taz_glyph_new = p_new.patches(
     xs="xs", ys="ys",
     source=new_taz_source,
@@ -272,7 +304,6 @@ taz_glyph_new = p_new.patches(
     selection_line_color="red", selection_line_width=2,
     nonselection_fill_color=None, nonselection_line_color="red"
 )
-# blocks => not selectable
 p_new.patches(
     xs="xs", ys="ys",
     source=new_taz_blocks_source,
@@ -280,7 +311,7 @@ p_new.patches(
 )
 p_new.add_tools(HoverTool(tooltips=[("New TAZ ID","@id"), ("EMP19","@EMP19")], renderers=[taz_glyph_new]))
 
-# Panel #3 => combined => new TAZ first, old TAZ second, blocks last => top
+# Panel #3: Combined – new TAZ first, then old TAZ, then blocks on top
 p_combined.patches(
     xs="xs", ys="ys",
     source=combined_new_source,
@@ -298,7 +329,7 @@ p_combined.patches(
     line_color="black", line_width=2, line_dash='dotted'
 )
 
-# Panel #4 => blocks => fill yellow, keep black dotted border on selection
+# Panel #4: Blocks – yellow fill with black dotted border on selection
 p_blocks.patches(
     xs="xs", ys="ys",
     source=blocks_source,
@@ -391,6 +422,24 @@ def run_search():
     global_new_gdf    = n
     global_blocks_gdf = b
 
+    # Compute the 1 km buffer based on the selected old TAZ union
+    old_union = o.unary_union
+    centroid = old_union.centroid
+    buffer_geom = centroid.buffer(1000)  # 1 km radius
+
+    # Update the old TAZ buffer data (filled polygon)
+    xs_buffer, ys_buffer = buffer_geom.exterior.coords.xy
+    old_taz_buffer_source.data = {
+        "xs": [list(xs_buffer)],
+        "ys": [list(ys_buffer)],
+        "id": [str(old_id_int)]
+    }
+
+    # NEW: Update neighbor outlines to show all old TAZes intersecting the buffer
+    neighbors = gdf_old_taz[gdf_old_taz.intersects(buffer_geom)].copy()
+    neighbors_temp = split_multipolygons_to_cds(neighbors, "taz_id")
+    old_taz_neighbors_source.data = dict(neighbors_temp.data)
+
     old_temp = split_multipolygons_to_cds(o, "taz_id")
     new_temp = split_multipolygons_to_cds(n, "taz_id", ["HH19", "PERSNS19", "WORKRS19", "EMP19"])
     blocks_temp = split_multipolygons_to_cds(b, "BLOCK_ID", ["HH19", "PERSNS19", "WORKRS19", "EMP19"])
@@ -418,7 +467,7 @@ def run_search():
     update_new_taz_table()
     update_blocks_table()
 
-    # Zoom panel #1 to the bounds of the old taz (with a little extra margin)
+    # Zoom panel #1 to the bounds of the selected old TAZ (with a little extra margin)
     minx, miny, maxx, maxy = o.total_bounds
     if minx == maxx or miny == maxy:
         minx -= 1000; maxx += 1000
@@ -481,30 +530,30 @@ match_zoom_btn.on_click(on_match_zoom_click)
 # -----------------------------------------------------------------------------
 # 9. Layout
 # -----------------------------------------------------------------------------
-# Row 1 => left: "Enter Old TAZ" + text. center: "Currently Searching TAZ" label. right: "Selected Map BG"
+# Row 1: left: "Enter Old TAZ" + text; center: "Currently Searching TAZ" label; right: "Selected Map BG"
 row1_left = row(label_taz, text_input, Spacer(width=10))
 row1_center = row(search_label)
 row1_right = row(Div(text="<b>Selected Map Background:</b>", width=150), tile_select)
 
 row1 = row(row1_left, Spacer(width=50), row1_center, Spacer(width=50), row1_right, sizing_mode="stretch_width")
 
-# Row 2 => "Search TAZ" + "Match 1st Panel Zoom" side by side
+# Row 2: "Search TAZ" + "Match 1st Panel Zoom" side by side
 row2 = row(search_button, match_zoom_btn, sizing_mode="stretch_width")
 
 top_maps = row(p_old, p_new, sizing_mode="scale_both")
 bot_maps = row(p_combined, p_blocks, sizing_mode="scale_both")
 maps_col = column(top_maps, bot_maps, sizing_mode="stretch_both")
 
-# 2 tables => fixed width ~1/4
+# Two tables (fixed width ~1/4)
 top_table = column(Div(text="<b>New TAZ Table</b>"), new_taz_data_table, sizing_mode="scale_both")
 bot_table = column(Div(text="<b>Blocks Table</b>"),  blocks_data_table,   sizing_mode="scale_both")
 tables_col = column(
     top_table, 
     bot_table, 
-    width_policy="max",  # Allow dynamic width
-    sizing_mode="stretch_both",  # Stretch height and width to fit layout
-    min_width=100,  # Ensures it doesn't shrink too much
-    max_width=375  # Prevents it from taking up too much space
+    width_policy="max",  
+    sizing_mode="stretch_both",  
+    min_width=100,  
+    max_width=375  
 )
 
 main_row = row(maps_col, tables_col, sizing_mode="stretch_both")
