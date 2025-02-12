@@ -298,7 +298,7 @@ p_old.patches(
 )
 buffer_renderer = p_old.patches(
     xs="xs", ys="ys", source=old_taz_buffer_source,
-    fill_color="lightyellow", fill_alpha=0.8,  # Increased alpha for stronger yellow background
+    fill_color="yellow", fill_alpha=0.08,
     line_color=None
 )
 p_old.renderers.remove(buffer_renderer)
@@ -327,7 +327,7 @@ p_old.add_tools(hover_old_patches)
 taz_glyph_new = p_new.patches(
     xs="xs", ys="ys", source=new_taz_source,
     fill_color=None, line_color="red", line_width=2,
-    selection_fill_color="yellow", selection_fill_alpha=0.3,
+    selection_fill_color="yellow", selection_fill_alpha=0.15,
     selection_line_color="red", selection_line_dash='solid',
     # Make non-selected boundaries more transparent:
     nonselection_fill_alpha=0.10, nonselection_line_color="red",
@@ -370,7 +370,7 @@ p_combined.patches(
 )
 p_combined.patches(
     xs="xs", ys="ys", source=combined_blocks_source,
-    fill_color="yellow", fill_alpha=0.3,
+    fill_color="yellow", fill_alpha=0.15,
     line_color="black", line_width=2, line_dash='dotted'
 )
 p_combined.patches(
@@ -382,7 +382,7 @@ p_combined.patches(
 # Blocks (bottom‐right)
 renderer_blocks = p_blocks.patches(
     xs="xs", ys="ys", source=blocks_source,
-    fill_color="yellow", fill_alpha=0.3,
+    fill_color="yellow", fill_alpha=0.15,
     line_color="black", line_width=2, line_dash='dotted', line_alpha=0.85,
     selection_fill_color="yellow", selection_fill_alpha=0.3,
     # Change selected blocks to have a solid boundary:
