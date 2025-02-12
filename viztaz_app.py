@@ -208,7 +208,8 @@ old_taz_neighbors_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 extra_old_taz_source     = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 
 old_taz_text_source      = ColumnDataSource(dict(cx=[], cy=[], id=[]))
-new_taz_text_source      = ColumnDataSource(dict(cx=[], cy=[], id=[]))
+# Note: new_taz_text_source now includes a "color" field for dynamic text color.
+new_taz_text_source      = ColumnDataSource(dict(cx=[], cy=[], id=[], color=[]))
 extra_old_taz_text_source= ColumnDataSource(dict(cx=[], cy=[], id=[]))
 
 centroid_source          = ColumnDataSource(data={'cx': [], 'cy': []})
@@ -265,7 +266,7 @@ for f in [p_old, p_new, p_combined, p_blocks]:
     t = f.add_tile(CARTODBPOSITRON)
     tile_map[f] = t
 
-# Grab references to each figure’s ResetTool
+# Grab references to each figure’s ResetTool (not used anymore)
 p_old_reset, p_new_reset, p_comb_reset, p_blocks_reset = None, None, None, None
 for t in p_old.toolbar.tools:
     if isinstance(t, ResetTool):
@@ -289,13 +290,16 @@ renderer_old_taz = p_old.patches(
     fill_color="lightgreen", fill_alpha=0.3,
     line_color="green", line_width=2
 )
+# Make block boundaries very faint (non-selectable) in top left
 p_old.patches(
     xs="xs", ys="ys", source=old_taz_blocks_source,
-    fill_color=None, line_color="black", line_width=2, line_dash='dotted'
+    fill_color=None, line_color="black", line_width=2, line_dash='dotted',
+    line_alpha=0.4
 )
 buffer_renderer = p_old.patches(
     xs="xs", ys="ys", source=old_taz_buffer_source,
-    fill_color="lightyellow", fill_alpha=0.3, line_color=None
+    fill_color="lightyellow", fill_alpha=0.5,  # Increased alpha for stronger yellow background
+    line_color=None
 )
 p_old.renderers.remove(buffer_renderer)
 p_old.renderers.insert(0, buffer_renderer)
@@ -324,13 +328,16 @@ taz_glyph_new = p_new.patches(
     xs="xs", ys="ys", source=new_taz_source,
     fill_color=None, line_color="red", line_width=2,
     selection_fill_color="yellow", selection_fill_alpha=0.3,
-    selection_line_color="black", selection_line_dash='dotted',
-    nonselection_fill_alpha=0.10, nonselection_line_color="black",
-    nonselection_line_dash='dotted', nonselection_line_alpha=0.85
+    selection_line_color="red", selection_line_dash='solid',
+    # Make non-selected boundaries more transparent:
+    nonselection_fill_alpha=0.10, nonselection_line_color="red",
+    nonselection_line_dash='dotted', nonselection_line_alpha=0.3
 )
+# Make block boundaries very faint (non-selectable) in top right
 p_new.patches(
     xs="xs", ys="ys", source=new_taz_blocks_source,
-    fill_color=None, line_color="black", line_width=2, line_dash='dotted'
+    fill_color=None, line_color="black", line_width=2, line_dash='dotted',
+    line_alpha=0.4
 )
 p_new.add_tools(HoverTool(
     tooltips=[
@@ -348,9 +355,10 @@ p_combined.patches(
     xs="xs", ys="ys", source=combined_new_source,
     fill_color=None, line_color="red", line_width=2
 )
+# Thicken the green old TAZ boundaries so they are easier to see:
 p_combined.patches(
     xs="xs", ys="ys", source=combined_old_source,
-    fill_color=None, line_color="green", line_width=2
+    fill_color=None, line_color="green", line_width=3
 )
 p_combined.patches(
     xs="xs", ys="ys", source=combined_blocks_source,
@@ -369,7 +377,8 @@ renderer_blocks = p_blocks.patches(
     fill_color="yellow", fill_alpha=0.3,
     line_color="black", line_width=2, line_dash='dotted', line_alpha=0.85,
     selection_fill_color="yellow", selection_fill_alpha=0.3,
-    selection_line_color="black", selection_line_dash='dotted',
+    # Change selected blocks to have a solid boundary:
+    selection_line_color="black", selection_line_dash="solid",
     nonselection_fill_alpha=0.10, nonselection_line_color="black",
     nonselection_line_dash='dotted', nonselection_line_alpha=0.85
 )
@@ -397,9 +406,10 @@ p_old.text(
     text_color="purple", text_font_size="10pt", text_font_style="bold",
     text_align="center", text_baseline="middle"
 )
+# For top-right TAZ IDs, use the dynamic "color" field so that only selected IDs are strong red.
 p_new.text(
     x="cx", y="cy", text="id", source=new_taz_text_source,
-    text_color="red", text_font_size="10pt", text_font_style="bold",
+    text_color={'field': 'color'}, text_font_size="10pt", text_font_style="bold",
     text_align="center", text_baseline="middle"
 )
 
@@ -513,16 +523,16 @@ apply_radius_button = Button(label="Apply Radius", button_type='success', width=
 apply_radius_button.css_classes.append("my-green-button")
 
 # Group row1: left side
-group_left = row(label_taz, text_input, search_button, create_divider())
+group_left = row(label_taz, text_input, search_button)
 # Extra TAZ
-group_extra  = row(extra_taz_label, extra_taz_input, extra_search_button, create_divider())
+group_extra  = row(extra_taz_label, extra_taz_input, extra_search_button)
 # Right side
-group_right  = row(tile_label, tile_select, create_divider(),
+group_right  = row(tile_label, tile_select, # create_divider(),
                    radius_label, radius_input, apply_radius_button)
 
 row1_combined = row(group_left, group_extra, group_right, sizing_mode="stretch_width")
 
-# Second row: GMaps, match zoom, reset, then "Currently Searching TAZ"
+# Second row: GMaps, match zoom, then "Currently Searching TAZ"
 open_gmaps_button = Button(label="Open TAZ in Google Maps", button_type="warning", width=150)
 open_gmaps_button.js_on_click(CustomJS(args=dict(centroid_source=centroid_source), code="""
     var data = centroid_source.data;
@@ -541,7 +551,7 @@ open_gmaps_button.js_on_click(CustomJS(args=dict(centroid_source=centroid_source
 """))
 
 match_zoom_btn = Button(label="Match 1st Panel Zoom", button_type="primary", width=130)
-reset_btn = Button(label="Reset Views", button_type="danger", width=130)
+# Removed the Reset Views button and its callback
 
 def on_match_zoom_click():
     # Copy p_old's range to the other three
@@ -562,21 +572,9 @@ def on_match_zoom_click():
 
 match_zoom_btn.on_click(on_match_zoom_click)
 
-def reset_views():
-    # Trigger built-in reset on each panel
-    if p_old_reset:     p_old_reset.do_reset()
-    if p_new_reset:     p_new_reset.do_reset()
-    if p_comb_reset:    p_comb_reset.do_reset()
-    if p_blocks_reset:  p_blocks_reset.do_reset()
-    # Then align them
-    on_match_zoom_click()
-
-reset_btn.on_click(reset_views)
-
 row2 = row(
-    open_gmaps_button, create_divider(),
-    match_zoom_btn, create_divider(),
-    reset_btn, create_divider(),
+    open_gmaps_button,
+    match_zoom_btn,
     search_label,  # Moved "Currently Searching TAZ" here
     sizing_mode="stretch_width"
 )
@@ -659,6 +657,9 @@ def run_search():
     # Label coords
     old_taz_text_source.data = split_multipolygons_to_text(subset_old, "taz_id")
     new_taz_text_source.data = split_multipolygons_to_text(new_sub,   "taz_id")
+    # Initialize text color for top-right TAZ IDs (all start faint)
+    default_colors = ["rgba(0,0,0,0.3)"] * len(new_taz_text_source.data['id'])
+    new_taz_text_source.data['color'] = default_colors
 
     # Clear selections + tables
     new_taz_source.selected.indices = []
@@ -739,7 +740,22 @@ extra_search_button.on_click(run_extra_search)
 extra_taz_input.on_event("value_submit", lambda event: run_extra_search())
 
 # -----------------------------------------------------------------------------
-# 11) Final Layout
+# 11) Dynamic TAZ Text Color Update (Top‐Right)
+# -----------------------------------------------------------------------------
+def update_new_taz_text_color(attr, old, new):
+    selected = set(new_taz_source.selected.indices)
+    colors = []
+    for i in range(len(new_taz_text_source.data['id'])):
+        if i in selected:
+            colors.append("red")
+        else:
+            colors.append("rgba(0,0,0,0.3)")
+    new_taz_text_source.data['color'] = colors
+
+new_taz_source.selected.on_change("indices", update_new_taz_text_color)
+
+# -----------------------------------------------------------------------------
+# 12) Final Layout
 # -----------------------------------------------------------------------------
 top_maps = row(
     column(div_old_title, p_old, sizing_mode="stretch_both"),
@@ -779,4 +795,4 @@ layout_final = column(
 )
 
 curdoc().add_root(layout_final)
-curdoc().title = "VizTAZ - Extended with Selection & Label Moved"
+curdoc().title = "VizTAZ - Extended with Updated Visuals"
