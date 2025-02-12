@@ -12,7 +12,7 @@ Features:
  - Main layout: ~3/4 maps (left) + ~1/4 tables (right)
  - Automatic zoom matching on TAZ search
  - TAZ polygons (red + yellow fill on selection) and blocks (yellow + black dotted on selection)
- - Old TAZ = blue in top-left & combined, plus neighbor outlines in gray (dotted)
+ - Old TAZ = now green in top‑left & combined, plus neighbor outlines in gray (dotted)
  - Summation row always at table bottom, bolded
  - TAZ ID in green if found, or red "[TAZ Not Found]" if invalid
 
@@ -29,13 +29,16 @@ Modifications in this version:
  8. The tables now also include additional 2049 data columns.
  9. The tables are now horizontally scrollable, with columns made a bit narrower.
 10. Extra text box for comma-delimited TAZ IDs displays additional old TAZ shapes in purple.
-11. TAZ IDs are now drawn as text labels: on the top–left (old TAZ) in blue and on the top–right (new TAZ) in red.
+11. TAZ IDs are now drawn as text labels: on the top–left (old TAZ) in green and on the top–right (new TAZ) in red.
 12. The text labels are bolded.
 13. The hover tooltip showing a TAZ ID appears only when the mouse is over the actual TAZ polygon.
 14. Top right (new TAZ) hover now shows TAZ ID, HH19, EMP19, HH49, and EMP49. Their values are pre-formatted to 1 decimal.
 15. Bottom right (blocks) hover now shows Block ID, HH19, EMP19, HH49, and EMP49 (formatted similarly).
 16. Scientific notation is turned off and axis tick labels use a format that trims insignificant trailing zeros.
 17. The extra TAZ search is triggered both by clicking its button and by pressing Enter/Tab in the extra search box.
+18. The extra TAZ search button is now styled with a purple background.
+19. The "Match 1st Panel Zoom" button now appears in blue.
+
 """
 
 import os, glob
@@ -312,9 +315,9 @@ p_blocks = figure(
 )
 
 # Create Divs for the titles so they remain visible.
-div_old_title      = Div(text="<b>1) Old TAZ (blue)</b>", styles={'font-size': '16px'})
+div_old_title      = Div(text="<b>1) Old TAZ (green)</b>", styles={'font-size': '16px'})
 div_new_title      = Div(text="<b>2) New TAZ (red; blocks not selectable)</b>", styles={'font-size': '16px'})
-div_combined_title = Div(text="<b>3) Combined (new=red, old=blue, blocks=yellow)</b>", styles={'font-size': '16px'})
+div_combined_title = Div(text="<b>3) Combined (new=red, old=green, blocks=yellow)</b>", styles={'font-size': '16px'})
 div_blocks_title   = Div(text="<b>4) Blocks (selectable, yellow)</b>", styles={'font-size': '16px'})
 
 # Add tile providers.
@@ -335,12 +338,12 @@ for f in [p_old, p_new, p_combined, p_blocks]:
 # -----------------------------------------------------------------------------
 # 5. Patch Glyphs
 # -----------------------------------------------------------------------------
-# Panel 1: Draw the old TAZ outlines (blue) with a light fill.
+# Panel 1: Draw the old TAZ outlines (green) with a light fill.
 renderer_old_taz = p_old.patches(
     xs="xs", ys="ys",
     source=old_taz_source,
-    fill_color="lightblue", fill_alpha=0.3,
-    line_color="blue",
+    fill_color="lightgreen", fill_alpha=0.3,
+    line_color="green",
     line_width=2
 )
 p_old.patches(
@@ -422,7 +425,7 @@ p_combined.patches(
 p_combined.patches(
     xs="xs", ys="ys",
     source=combined_old_source,
-    fill_color=None, line_color="blue", line_width=2
+    fill_color=None, line_color="green", line_width=2
 )
 p_combined.patches(
     xs="xs", ys="ys",
@@ -470,10 +473,10 @@ p_combined.patches(
 
 # Add text glyphs to show TAZ IDs on the top panels.
 p_old.text(x="cx", y="cy", text="id", source=old_taz_text_source,
-           text_color="blue", text_font_size="10pt", text_font_style="bold",
+           text_color="green", text_font_size="10pt", text_font_style="bold",
            text_align="center", text_baseline="middle")
 p_old.text(x="cx", y="cy", text="id", source=extra_old_taz_text_source,
-           text_color="blue", text_font_size="10pt", text_font_style="bold",
+           text_color="purple", text_font_size="10pt", text_font_style="bold",
            text_align="center", text_baseline="middle")
 p_new.text(x="cx", y="cy", text="id", source=new_taz_text_source,
            text_color="red", text_font_size="10pt", text_font_style="bold",
@@ -543,12 +546,15 @@ search_label = Div(text="Currently Searching TAZ: <span style='color:green'>(non
 label_taz    = Div(text="<b>Enter Old TAZ ID:</b>", width=120)
 text_input   = TextInput(value="", title="", placeholder="TAZ ID...", width=100)
 search_button= Button(label="Search TAZ", button_type="success", width=80)
-match_zoom_btn = Button(label="Match 1st Panel Zoom", width=130)
+# Change the Match 1st Panel Zoom button to blue by using the primary type.
+match_zoom_btn = Button(label="Match 1st Panel Zoom", button_type="primary", width=130)
 
 # Extra TAZ search for purple shapes.
 extra_taz_label = Div(text="<b>Extra TAZ IDs (comma separated):</b>", width=200)
 extra_taz_input = TextInput(value="", title="", placeholder="e.g. 101, 102, 103", width=150)
-extra_search_button = Button(label="Search Extra TAZ", button_type="primary", width=120)
+# Update the extra search button to be styled as purple.
+extra_search_button = Button(label="Search Extra TAZ", button_type="default", width=120)
+extra_search_button.css_classes.append("purple-button")
 
 tile_label   = Div(text="<b>Selected Map Background:</b>", width=150)
 tile_select  = Select(value="CartoDB Positron", options=["CartoDB Positron","ESRI Satellite"], width=140)
@@ -722,6 +728,19 @@ def run_extra_search():
 extra_search_button.on_click(run_extra_search)
 # Also trigger extra search when the user presses Enter/Tab in the extra search input.
 extra_taz_input.on_change("value_input", lambda attr, old, new: run_extra_search())
+extra_taz_input.on_event("value_submit", lambda event: run_extra_search())
+
+# -----------------------------------------------------------------------------
+# Add custom CSS for the purple extra TAZ button
+# -----------------------------------------------------------------------------
+curdoc().add_root(Div(text="""
+<style>
+.purple-button .bk-btn {
+    background-color: purple !important;
+    color: white !important;
+}
+</style>
+""", visible=False))
 
 # -----------------------------------------------------------------------------
 # 9. Layout
