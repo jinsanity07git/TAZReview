@@ -783,3 +783,17 @@ layout_final = column(row1, row2, main_row, sizing_mode="stretch_both")
 
 curdoc().add_root(layout_final)
 curdoc().title = "Final Layout - No doc.stylesheets - Bokeh 3.x"
+
+from tornado.ioloop import IOLoop
+
+def calibrate_plots():
+    # For each of your four figures, re‑emit the current range values.
+    for plot in [p_old, p_new, p_combined, p_blocks]:
+        # Assigning the same value back forces a recalculation.
+        plot.x_range.start = plot.x_range.start
+        plot.x_range.end   = plot.x_range.end
+        plot.y_range.start = plot.y_range.start
+        plot.y_range.end   = plot.y_range.end
+
+# Schedule this callback to run on the next tick (after the initial layout)
+curdoc().add_next_tick_callback(calibrate_plots)
