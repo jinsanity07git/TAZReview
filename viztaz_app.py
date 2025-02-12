@@ -294,11 +294,11 @@ renderer_old_taz = p_old.patches(
 p_old.patches(
     xs="xs", ys="ys", source=old_taz_blocks_source,
     fill_color=None, line_color="black", line_width=2, line_dash='dotted',
-    line_alpha=0.4
+    line_alpha=0.25
 )
 buffer_renderer = p_old.patches(
     xs="xs", ys="ys", source=old_taz_buffer_source,
-    fill_color="lightyellow", fill_alpha=0.5,  # Increased alpha for stronger yellow background
+    fill_color="lightyellow", fill_alpha=0.8,  # Increased alpha for stronger yellow background
     line_color=None
 )
 p_old.renderers.remove(buffer_renderer)
@@ -323,7 +323,7 @@ hover_old_patches = HoverTool(
 )
 p_old.add_tools(hover_old_patches)
 
-# New TAZ (top‐right)
+# New TAZ (top‐right)# New TAZ (top‐right)
 taz_glyph_new = p_new.patches(
     xs="xs", ys="ys", source=new_taz_source,
     fill_color=None, line_color="red", line_width=2,
@@ -331,14 +331,22 @@ taz_glyph_new = p_new.patches(
     selection_line_color="red", selection_line_dash='solid',
     # Make non-selected boundaries more transparent:
     nonselection_fill_alpha=0.10, nonselection_line_color="red",
-    nonselection_line_dash='dotted', nonselection_line_alpha=0.3
+    nonselection_line_dash='solid', nonselection_line_alpha=0.3
 )
+
+# Restrict the TapTool so that only the new TAZ is selectable
+from bokeh.models import TapTool
+taptool = p_new.select_one(TapTool)
+if taptool:
+    taptool.renderers = [taz_glyph_new]
+
 # Make block boundaries very faint (non-selectable) in top right
 p_new.patches(
     xs="xs", ys="ys", source=new_taz_blocks_source,
     fill_color=None, line_color="black", line_width=2, line_dash='dotted',
-    line_alpha=0.4
+    line_alpha=0.25
 )
+
 p_new.add_tools(HoverTool(
     tooltips=[
         ("TAZ ID", "@id"),
@@ -530,7 +538,12 @@ group_extra  = row(extra_taz_label, extra_taz_input, extra_search_button)
 group_right  = row(tile_label, tile_select, # create_divider(),
                    radius_label, radius_input, apply_radius_button)
 
-row1_combined = row(group_left, group_extra, group_right, sizing_mode="stretch_width")
+row1_combined = row(group_left,
+                    Spacer(width=10),
+                    group_extra,
+                    Spacer(width=10),
+                    group_right,
+                    sizing_mode="stretch_width")
 
 # Second row: GMaps, match zoom, then "Currently Searching TAZ"
 open_gmaps_button = Button(label="Open TAZ in Google Maps", button_type="warning", width=150)
@@ -574,8 +587,10 @@ match_zoom_btn.on_click(on_match_zoom_click)
 
 row2 = row(
     open_gmaps_button,
+    Spacer(width=20),  # Adds 20px of space
     match_zoom_btn,
-    search_label,  # Moved "Currently Searching TAZ" here
+    Spacer(width=20),  # Adds another 20px of space
+    search_label,
     sizing_mode="stretch_width"
 )
 
@@ -656,10 +671,11 @@ def run_search():
 
     # Label coords
     old_taz_text_source.data = split_multipolygons_to_text(subset_old, "taz_id")
-    new_taz_text_source.data = split_multipolygons_to_text(new_sub,   "taz_id")
-    # Initialize text color for top-right TAZ IDs (all start faint)
-    default_colors = ["rgba(0,0,0,0.3)"] * len(new_taz_text_source.data['id'])
+    new_taz_text_source.data = split_multipolygons_to_text(new_sub, "taz_id")
+    # Initialize text color for top-right TAZ IDs (all start red)
+    default_colors = ["red"] * len(new_taz_text_source.data['id'])
     new_taz_text_source.data['color'] = default_colors
+
 
     # Clear selections + tables
     new_taz_source.selected.indices = []
@@ -749,7 +765,7 @@ def update_new_taz_text_color(attr, old, new):
         if i in selected:
             colors.append("red")
         else:
-            colors.append("rgba(0,0,0,0.3)")
+            colors.append("#ffcccc")  # Use light red for unselected TAZ labels
     new_taz_text_source.data['color'] = colors
 
 new_taz_source.selected.on_change("indices", update_new_taz_text_color)
