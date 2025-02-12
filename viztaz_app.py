@@ -38,7 +38,7 @@ Modifications in this version:
 17. The extra TAZ search is triggered both by clicking its button and by pressing Enter/Tab in the extra search box.
 18. The extra TAZ search button is now styled with a purple background.
 19. The "Match 1st Panel Zoom" button now appears in blue.
-
+20. A new button “Open TAZ in Google Maps” opens the old TAZ’s centroid location (used for the 1‑km buffer) in Google Maps.
 """
 
 import os, glob
@@ -50,7 +50,7 @@ from bokeh.io import curdoc
 from bokeh.layouts import column, row, Spacer
 from bokeh.models import (
     ColumnDataSource, DataTable, TableColumn,
-    Div, TextInput, Button, Select, HoverTool
+    Div, TextInput, Button, Select, HoverTool, CustomJS
 )
 from bokeh.models.widgets.tables import HTMLTemplateFormatter
 from bokeh.plotting import figure
@@ -240,8 +240,9 @@ def add_formatted_fields(source, fields):
                 f"{x:.1f}" if isinstance(x, (int, float)) else ""
                 for x in source.data[field]
             ]
+
 # -----------------------------------------------------------------------------
-# 3. DataSources for the 4 panels and for text labels
+# 3. DataSources for the 4 panels, text labels, and the centroid (for Google Maps)
 # -----------------------------------------------------------------------------
 old_taz_source        = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 old_taz_blocks_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
@@ -276,6 +277,9 @@ extra_old_taz_source = ColumnDataSource(dict(xs=[], ys=[], id=[]))
 old_taz_text_source = ColumnDataSource(dict(cx=[], cy=[], id=[]))
 new_taz_text_source = ColumnDataSource(dict(cx=[], cy=[], id=[]))
 extra_old_taz_text_source = ColumnDataSource(dict(cx=[], cy=[], id=[]))
+
+# NEW: Data source for the centroid (used for Google Maps)
+centroid_source = ColumnDataSource(data={'cx': [], 'cy': []})
 
 global_new_gdf    = None
 global_blocks_gdf = None
@@ -559,6 +563,29 @@ extra_search_button.css_classes.append("purple-button")
 tile_label   = Div(text="<b>Selected Map Background:</b>", width=150)
 tile_select  = Select(value="CartoDB Positron", options=["CartoDB Positron","ESRI Satellite"], width=140)
 
+# NEW: Button to open the old TAZ centroid in Google Maps.
+open_gmaps_button = Button(label="Open TAZ in Google Maps", button_type="warning", width=150)
+open_gmaps_button.js_on_click(CustomJS(args=dict(centroid_source=centroid_source), code="""
+    var data = centroid_source.data;
+    if (data['cx'].length === 0 || data['cy'].length === 0) {
+        alert("No TAZ centroid available. Please perform a search first.");
+        return;
+    }
+    var x = data['cx'][0];
+    var y = data['cy'][0];
+    var R = 6378137.0;  // Earth's radius in meters
+
+    // Convert from Web Mercator (EPSG:3857) to longitude (EPSG:4326)
+    var lon = (x / R) * (180 / Math.PI);
+
+    // Convert from Web Mercator (EPSG:3857) to latitude (EPSG:4326)
+    var lat = (Math.PI / 2 - 2 * Math.atan(Math.exp(-y / R))) * (180 / Math.PI);
+
+    // Construct Google Maps URL
+    var url = "https://www.google.com/maps?q=" + lat + "," + lon;
+    window.open(url, "_blank");
+"""))
+
 def run_search():
     val = text_input.value.strip()
     if not val:
@@ -583,7 +610,11 @@ def run_search():
 
     # Compute the 1 km buffer based on the selected old TAZ union.
     old_union = o.unary_union
-    centroid = old_union.centroid
+    centroid = old_union.centroid  # This centroid is in EPSG:3857
+
+    # NEW: Update the centroid_source so it can be used by the Google Maps button.
+    centroid_source.data = {"cx": [centroid.x], "cy": [centroid.y]}
+
     buffer_geom = centroid.buffer(1000)  # 1 km radius
 
     # Update the old TAZ buffer data.
@@ -753,7 +784,8 @@ row1_center = row(search_label)
 row1_right = row(Div(text="<b>Selected Map Background:</b>", width=150), tile_select)
 
 row1 = row(row1_left, Spacer(width=50), row1_center, Spacer(width=50), row1_right, sizing_mode="stretch_width")
-row2 = row(search_button, match_zoom_btn, sizing_mode="stretch_width")
+# Include the new open_gmaps_button in the same row as the search and zoom buttons.
+row2 = row(search_button, match_zoom_btn, Spacer(width=8), open_gmaps_button, sizing_mode="stretch_width")
 
 top_maps = row(
     column(div_old_title, p_old, sizing_mode="scale_both"),
@@ -784,6 +816,9 @@ layout_final = column(row1, row2, main_row, sizing_mode="stretch_both")
 curdoc().add_root(layout_final)
 curdoc().title = "Final Layout - No doc.stylesheets - Bokeh 3.x"
 
+# -----------------------------------------------------------------------------
+# 10. Calibration Callback: Ensure projection and hit-testing is accurate on load
+# -----------------------------------------------------------------------------
 from tornado.ioloop import IOLoop
 
 def calibrate_plots():
@@ -795,5 +830,5 @@ def calibrate_plots():
         plot.y_range.start = plot.y_range.start
         plot.y_range.end   = plot.y_range.end
 
-# Schedule this callback to run on the next tick (after the initial layout)
+# Schedule the calibration callback to run on the next tick (after the initial layout)
 curdoc().add_next_tick_callback(calibrate_plots)
