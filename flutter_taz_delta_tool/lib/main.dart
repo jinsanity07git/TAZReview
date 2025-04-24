@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:turf/turf.dart' as turf;
 import 'package:r_tree/r_tree.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:archive/archive.dart'; 
 
 /// Helper: Generate a GeoJSON polygon approximating a circle.
 Map<String, dynamic> createCirclePolygon(turf.Point center, double radius,
@@ -343,7 +345,72 @@ class _DashboardPageState extends State<DashboardPage> {
     _blocksTableHorizontalScrollController.dispose();
     super.dispose();
   }
-    
+  
+  /// Pulls demo data from assets/geojsons.zip, extracts the three GeoJSON files,
+  /// standardises their properties, caches them in localStorage + memory, and
+  /// kicks off the normal _loadCachedData() pipeline.
+  Future<void> _loadDemoData() async {
+    try {
+      final bytes = await rootBundle.load('assets/geojsons.zip');
+      final archive = ZipDecoder().decodeBytes(bytes.buffer.asUint8List());
+      for (final file in archive) {
+        if (!file.isFile) continue;
+        final name = file.name.toLowerCase();
+        final contentBytes = file.content as List<int>;
+        final geo = jsonDecode(utf8.decode(contentBytes)) as Map<String, dynamic>;
+        final standardized = standardizeGeoJsonProperties(
+          geo,
+          name.endsWith('old_taz.geojson')
+              ? 'old_taz'
+              : name.endsWith('new_taz.geojson')
+                  ? 'new_taz'
+                  : 'blocks',
+        );
+        // Only try to write to localStorage if the payload is small:
+        if (contentBytes.length <= 5 * 1024 * 1024) {
+          try {
+            final key = name.endsWith('old_taz.geojson')
+                ? 'old_taz_geojson'
+                : name.endsWith('new_taz.geojson')
+                    ? 'new_taz_geojson'
+                    : 'blocks_geojson';
+            html.window.localStorage[key] = jsonEncode(standardized);
+          } catch (e) {
+            debugPrint('⚠️ skipping localStorage for $name: $e');
+          }
+        }
+        // Always keep it in memory and flip the upload flag:
+        if (name.endsWith('old_taz.geojson')) {
+          _cachedOldTaz = standardized;
+          _uploadedOldTaz = true;
+        } else if (name.endsWith('new_taz.geojson')) {
+          _cachedNewTaz = standardized;
+          _uploadedNewTaz = true;
+        } else {
+          _cachedBlocks = standardized;
+          _uploadedBlocks = true;
+        }
+      }
+
+      // Once all three are in memory, flip the screen over to the dashboard:
+      if (_uploadedOldTaz && _uploadedNewTaz && _uploadedBlocks) {
+        setState(() {
+          _filesReady = true;
+          _isLoading = true;
+        });
+        await _loadCachedData();
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Demo-data load failed: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load demo data')),
+      );
+    }
+  }
+
   Future<void> _loadCachedData() async {
     // Only update the in-memory cache if it's null.
     _cachedOldTaz ??= _loadGeoJsonFromLocal('old_taz_geojson', "old_taz");
@@ -712,16 +779,40 @@ class _DashboardPageState extends State<DashboardPage> {
     });
   }
 
+  Widget _buildDemoDataButton() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8.0),
+      child: Tooltip(
+        message: "Load Demo Data",
+        child: ElevatedButton.icon(
+          onPressed: _isProcessingUpload ? null : _loadDemoData,
+          icon: const Icon(Icons.cloud_upload),
+          label: const Text("Demo Data"),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            elevation: 2,
+            // only shrink left/right padding:
+            padding: const EdgeInsets.symmetric(horizontal: 13.0, vertical: 10.0),
+            // make the text bold:
+            textStyle: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // While a file is being processed, show a loading screen.
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text("VizTAZ Dashboard"),
-          backgroundColor: const Color(0xFF013220), // Dark green.
+          title: const Text("VizTAZ Dashboard", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          backgroundColor: const Color(0xFF013220),
           leadingWidth: 150,
           leading: _buildUploadButtons(),
+          actions: !_filesReady ? [_buildDemoDataButton()] : null,
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -738,6 +829,7 @@ class _DashboardPageState extends State<DashboardPage> {
           backgroundColor: const Color(0xFF013220), // Very dark green for the AppBar.
           leadingWidth: 150,
           leading: _buildUploadButtons(),
+          actions: [_buildDemoDataButton()],
         ),
         body: Center(
           child: Column(
@@ -1365,7 +1457,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
   
-  /// Builds the three upload buttons as a Row.
+  /// Builds the three upload buttons, plus (when needed) the demo-data loader.
   Widget _buildUploadButtons() {
     return Container(
       padding: const EdgeInsets.all(4),
@@ -1383,6 +1475,7 @@ class _DashboardPageState extends State<DashboardPage> {
               onPressed: () => _uploadGeoJson("old_taz"),
             ),
           ),
+
           // New TAZ upload button.
           Tooltip(
             message: "Upload New TAZ GeoJSON file",
@@ -1394,6 +1487,7 @@ class _DashboardPageState extends State<DashboardPage> {
               onPressed: () => _uploadGeoJson("new_taz"),
             ),
           ),
+          
           // Blocks upload button.
           Tooltip(
             message: "Upload Blocks GeoJSON file",
