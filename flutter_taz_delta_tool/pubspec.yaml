@@ -1,0 +1,26 @@
+name: flutter_dashboard
+description: Demonstration of shapefile->geojson usage in Flutter
+
+publish_to: "none"
+
+environment:
+  sdk: ">=2.17.0 <3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  maplibre_gl: ^0.20.0
+  turf: ^0.0.10
+  r_tree: ^3.0.1
+  # archive: ^4.0.7
+  archive: ^3.4.9
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - ./assets/geojsons.zip
